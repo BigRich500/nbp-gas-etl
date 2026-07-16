@@ -73,8 +73,8 @@ UKCS_ENTRY_IDS = (
 LNG_ENTRY_IDS = ("PUBOB3480", "PUBOB3564", "PUBOB371", "PUBOB3473")  # South Hook, Dragon, Grain NTS1/2 — fallback if the aggregate item is unavailable
 
 STORAGE_OUTFLOW_IDS = (
-    "PUBOBJ2413", "PUBOBJ2414", "PUBOBJ2416", "PUBOBJ2417", "PUBOBJ2418",
-    "PUBOBJ2419", "PUBOBJ2420", "PUBOBJ2421", "PUBOBJ2422",
+    "PUBOBJ2413", "PUBOBJ2414", "PUBOBJ2415", "PUBOBJ2416", "PUBOBJ2417",
+    "PUBOBJ2418", "PUBOBJ2419", "PUBOBJ2420", "PUBOBJ2421", "PUBOBJ2422",
 )
 
 COMPONENTS: list[Component] = [
@@ -83,6 +83,14 @@ COMPONENTS: list[Component] = [
     Component("Norway (Langeled)", "supply", ("PUBOB452",), mode="sum"),
     Component("LNG", "supply", ("PUBOBJ337",), mode="sum"),  # aggregate; falls back to LNG_ENTRY_IDS if empty — see balance.py
     Component("Storage withdrawal", "supply", STORAGE_OUTFLOW_IDS, mode="sum"),
+    # IUK import uses PUBOB2038 (Physical Flows, Bacton, Interconnector), not
+    # PUBOB386 (Bacton_IUK_entry, System Entry Volume, D+2). Checked against
+    # real data (2026-07-05/13/14): PUBOB2038 runs ~34-35 mcm/d, PUBOB386
+    # only ~0.1-0.4 mcm/d — not the same physical import measured twice, so
+    # no double-counting risk. PUBOB386 is something else (possibly a small
+    # residual/accounting adjustment at the entry point); still pulled raw
+    # but not part of this sum, since its magnitude can't represent the
+    # actual import volume.
     Component("IUK import", "supply", ("PUBOB2038",), mode="sign_positive"),
     Component("BBL import", "supply", ("PUBOBJ1307",), mode="sign_positive"),
 

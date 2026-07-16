@@ -89,6 +89,7 @@ def fetch_elexon(days: int) -> pd.DataFrame:
     df["publish_time"] = df["publishTime"]
     st = pd.to_datetime(df["start_time"], utc=True)
     df["gas_day"] = st.apply(compute_gas_day)
+    df = df[df["fuel_type"].isin(("CCGT", "OCGT"))]  # gas-fired only — Powerstations Total (PUBOBJ1017) already gives actual gas volume burned
     return df[["settlement_date", "settlement_period", "fuel_type", "generation_mw", "start_time", "publish_time", "gas_day"]]
 
 
@@ -155,6 +156,8 @@ def main():
     active_items = dim[dim["relevant"] == True]  # noqa: E712
     active_items = active_items[active_items["category"].isin([
         "Demand", "Supplies", "Storage", "Linepack", "Price", "LNG",
+        "Weather", "Operating Margins", "Balancing", "Shrinkage",
+        # "Notices" deliberately excluded: free-text system warnings, doesn't fit value_raw/value_mcm
     ])] if "category" in active_items.columns else active_items
 
     print(f"=== Elexon (last {args.days} days, all fuel types) ===")

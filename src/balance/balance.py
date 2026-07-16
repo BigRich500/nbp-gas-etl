@@ -24,6 +24,14 @@ DEFICIT_THRESHOLD_MCM = -2.0
 def _load_latest(data_dir: str) -> pd.DataFrame:
     path = table_path(data_dir, "national_gas_daily")
     df = pd.read_csv(path, parse_dates=["gas_day"])
+    # Keep gas_day as a plain date, matching national_gas_daily.csv's own
+    # on-disk convention (written from Python date objects, not Timestamps).
+    # Carrying datetime64 through to daily_balance/component_breakdown made
+    # their gas_day round-trip through CSV as "2026-07-05 00:00:00" while
+    # astype(str) on the in-memory value produced "2026-07-05" — the dedup
+    # key in csv_store.write_rows() never matched, so upserts silently
+    # became inserts (verified: reproduced duplicate rows in daily_balance.csv).
+    df["gas_day"] = df["gas_day"].dt.date
     return df[df["is_latest"] == True]  # noqa: E712
 
 
@@ -50,18 +58,24 @@ def component_breakdown(data_dir: str = "data/csv_tables") -> pd.DataFrame:
     component per day, for drill-down into what's driving the balance."""
     latest = _load_latest(data_dir)
 
-    # LNG aggregate fallback: if the PUBOBJ337 aggregate has no data yet,
-    # sum the individual terminal entry volumes instead.
-    components = list(COMPONENTS)
-    lng_idx = next(i for i, c in enumerate(components) if c.name == "LNG")
-    if latest[latest["pubob_id"] == "PUBOBJ337"].empty:
-        components[lng_idx] = type(components[lng_idx])(
-            "LNG", "supply", LNG_ENTRY_IDS, mode="sum"
-        )
-
     frames = []
-    for component in components:
+    for component in COMPONENTS:
         series = _component_series(latest, component)
+
+        # LNG aggregate fallback: PUBOBJ337 doesn't publish for every gas_day
+        # (some days it just has no row at all). Fill only the missing days
+        # from the per-terminal entry sum — combine_first keeps a real 0.0
+        # from the aggregate as-is, and only fills gas_days absent from it.
+        # Must be done per-day, not by checking if PUBOBJ337 is empty across
+        # the whole table: once it has a row for *any* day, a table-wide
+        # empty-check stops falling back and silently drops LNG supply on
+        # every day PUBOBJ337 itself has no row for.
+        if component.name == "LNG":
+            entry_series = _component_series(
+                latest, type(component)("LNG", "supply", LNG_ENTRY_IDS, mode="sum")
+            )
+            series = series.combine_first(entry_series)
+
         if series.empty:
             continue
         frames.append(pd.DataFrame({

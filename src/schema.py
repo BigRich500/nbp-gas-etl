@@ -44,4 +44,22 @@ TABLES = {
         "key": ["gas_day", "pubob_id", "applicable_at", "generated_time"],
         "mode": "append",
     },
+    "daily_balance": {
+        "columns": [
+            "gas_day", "total_supply_mcm", "total_demand_mcm", "balance_mcm",
+            "status", "complete", "ingested_at", "updated_at",
+        ],
+        # Derived, current-state table (recomputed from national_gas_daily
+        # each time src/balance/persist.py runs) — upsert on gas_day, not a
+        # revision log.
+        "key": ["gas_day"],
+        "mode": "upsert",
+    },
+    "component_breakdown": {
+        "columns": [
+            "gas_day", "component", "side", "volume_mcm", "ingested_at", "updated_at",
+        ],
+        "key": ["gas_day", "component"],
+        "mode": "upsert",
+    },
 }
