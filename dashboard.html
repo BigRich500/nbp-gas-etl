@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>NBP Gas Supply vs Demand — 2026-07-14</title>
+<title>NBP Gas Supply vs Demand</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 32px; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; display: flex; align-items: center; gap: 16px; }
   .sub { color: #94a3b8; margin-bottom: 24px; }
+  select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; font-size: 0.95rem; }
   .banner { background: #7c2d12; color: #fed7aa; padding: 10px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; }
   .cards { display: flex; gap: 16px; margin-bottom: 28px; }
   .card { background: #1e293b; border-radius: 10px; padding: 18px 24px; flex: 1; }
@@ -21,28 +22,31 @@
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
   canvas { max-height: 420px; }
+  details { border-bottom: 1px solid #334155; }
+  details:last-child { border-bottom: none; }
+  summary { cursor: pointer; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary .arrow { color: #64748b; font-size: 0.75rem; margin-left: 6px; }
+  .detail-list { padding: 2px 8px 8px 26px; max-height: 220px; overflow-y: auto; }
+  .detail-list div { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.85rem; color: #cbd5e1; }
+  .no-detail { color: #64748b; font-size: 0.8rem; padding: 4px 8px 8px 26px; }
 </style>
 </head>
 <body>
-  <h1>NBP Gas Supply vs Demand</h1>
-  <div class="sub">Gas day 2026-07-14 (06:00–06:00 Europe/London) &middot; generated from nbp-gas-etl</div>
-  <div class="banner">Showing the most recent fully-published gas day — 1 day behind today. More recent days exist but some components (entry volumes, D+1/D+2 offtake) haven't published yet; see the trend strip below for their partial figures.</div>
+  <h1>NBP Gas Supply vs Demand <select id="daySelect"></select></h1>
+  <div class="sub" id="subHeader"></div>
+  <div id="banner"></div>
   <div class="cards">
-    <div class="card"><div class="label">Total supply</div><div class="value">142.3 mcm</div></div>
-    <div class="card"><div class="label">Total demand</div><div class="value">140.4 mcm</div></div>
-    <div class="card"><div class="label">Balance</div><div class="value" style="color:#64748b">+1.9 mcm &middot; balanced</div></div>
+    <div class="card"><div class="label">Total supply</div><div class="value" id="cardSupply"></div></div>
+    <div class="card"><div class="label">Total demand</div><div class="value" id="cardDemand"></div></div>
+    <div class="card"><div class="label">Balance</div><div class="value" id="cardBalance"></div></div>
   </div>
   <div class="grid">
     <div class="panel">
       <canvas id="bucketChart"></canvas>
     </div>
     <div class="panel">
-      <table>
-        <thead><tr><th>Component</th><th class="num">Side</th><th class="num">mcm</th></tr></thead>
-        <tbody>
-          <tr><td><span class="swatch" style="background:#94a3b8"></span>Subterminal entry (UKCS + Norway)</td><td class="num">supply</td><td class="num">135.14</td></tr><tr><td><span class="swatch" style="background:#14b8a6"></span>Storage withdrawal</td><td class="num">supply</td><td class="num">7.17</td></tr><tr><td><span class="swatch" style="background:#06b6d4"></span>LNG</td><td class="num">supply</td><td class="num">0.00</td></tr><tr><td><span class="swatch" style="background:#ec4899"></span>Interconnector exports</td><td class="num">demand</td><td class="num">61.24</td></tr><tr><td><span class="swatch" style="background:#f97316"></span>Residential/commercial</td><td class="num">demand</td><td class="num">41.79</td></tr><tr><td><span class="swatch" style="background:#ef4444"></span>Power generation</td><td class="num">demand</td><td class="num">31.09</td></tr><tr><td><span class="swatch" style="background:#a855f7"></span>Storage injection</td><td class="num">demand</td><td class="num">2.87</td></tr><tr><td><span class="swatch" style="background:#f59e0b"></span>Industrial (NTS-connected)</td><td class="num">demand</td><td class="num">2.72</td></tr><tr><td><span class="swatch" style="background:#94a3b8"></span>Shrinkage</td><td class="num">demand</td><td class="num">0.66</td></tr>
-        </tbody>
-      </table>
+      <div id="detailTable"></div>
     </div>
   </div>
   <div class="panel" style="margin-top:24px;">
@@ -50,35 +54,96 @@
   </div>
 
 <script>
-new Chart(document.getElementById('bucketChart'), {
-  type: 'bar',
-  data: {
-    labels: ['Supply', 'Demand'],
-    datasets: [{"label": "Subterminal entry (UKCS + Norway)", "data": [135.13641, 0], "backgroundColor": "#94a3b8"}, {"label": "Storage withdrawal", "data": [7.171020519713261, 0], "backgroundColor": "#14b8a6"}, {"label": "LNG", "data": [0.0, 0], "backgroundColor": "#06b6d4"}, {"label": "Interconnector exports", "data": [0, 61.2352], "backgroundColor": "#ec4899"}, {"label": "Residential/commercial", "data": [0, 41.79163], "backgroundColor": "#f97316"}, {"label": "Power generation", "data": [0, 31.09147], "backgroundColor": "#ef4444"}, {"label": "Storage injection", "data": [0, 2.86537], "backgroundColor": "#a855f7"}, {"label": "Industrial (NTS-connected)", "data": [0, 2.71879], "backgroundColor": "#f59e0b"}, {"label": "Shrinkage", "data": [0, 0.6629282258064516], "backgroundColor": "#94a3b8"}]
-  },
-  options: {
-    responsive: true,
-    plugins: { legend: { position: 'bottom', labels: { color: '#e2e8f0', boxWidth: 12 } }, title: { display: true, text: 'Bucketed by component', color: '#e2e8f0' } },
-    scales: {
-      x: { stacked: true, ticks: { color: '#e2e8f0' }, grid: { color: '#334155' } },
-      y: { stacked: true, ticks: { color: '#e2e8f0' }, grid: { color: '#334155' }, title: { display: true, text: 'mcm', color: '#94a3b8' } }
-    }
+const DATA = {"days": ["2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-14", "2026-07-15"], "defaultDay": "2026-07-14", "latestGasDay": "2026-07-15", "balance": {"2026-07-02": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.671, "balance_mcm": -0.671, "status": "balanced", "complete": false, "days_behind": 13}, "2026-07-03": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.767, "balance_mcm": -0.767, "status": "balanced", "complete": false, "days_behind": 12}, "2026-07-04": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.302, "balance_mcm": -0.302, "status": "balanced", "complete": false, "days_behind": 11}, "2026-07-05": {"total_supply_mcm": 154.508, "total_demand_mcm": 151.835, "balance_mcm": 2.672, "status": "surplus", "complete": true, "days_behind": 10}, "2026-07-06": {"total_supply_mcm": 143.518, "total_demand_mcm": 142.899, "balance_mcm": 0.619, "status": "balanced", "complete": false, "days_behind": 9}, "2026-07-07": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.514, "balance_mcm": -0.514, "status": "balanced", "complete": false, "days_behind": 8}, "2026-07-08": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.48, "balance_mcm": -0.48, "status": "balanced", "complete": false, "days_behind": 7}, "2026-07-09": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.482, "balance_mcm": -0.482, "status": "balanced", "complete": false, "days_behind": 6}, "2026-07-10": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.456, "balance_mcm": -0.456, "status": "balanced", "complete": false, "days_behind": 5}, "2026-07-11": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.259, "balance_mcm": -0.259, "status": "balanced", "complete": false, "days_behind": 4}, "2026-07-12": {"total_supply_mcm": 0.0, "total_demand_mcm": 0.27, "balance_mcm": -0.27, "status": "balanced", "complete": false, "days_behind": 3}, "2026-07-13": {"total_supply_mcm": 141.007, "total_demand_mcm": 145.549, "balance_mcm": -4.542, "status": "deficit", "complete": true, "days_behind": 2}, "2026-07-14": {"total_supply_mcm": 142.307, "total_demand_mcm": 140.365, "balance_mcm": 1.942, "status": "balanced", "complete": true, "days_behind": 1}, "2026-07-15": {"total_supply_mcm": 147.783, "total_demand_mcm": 156.052, "balance_mcm": -8.269, "status": "deficit", "complete": false, "days_behind": 0}}, "breakdown": {"2026-07-02": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.671}], "2026-07-03": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.767}], "2026-07-04": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.302}], "2026-07-05": [{"component": "UKCS production", "side": "supply", "volume_mcm": 79.947}, {"component": "Interconnector exports", "side": "demand", "volume_mcm": 63.163}, {"component": "Norway (Langeled)", "side": "supply", "volume_mcm": 57.93}, {"component": "Residential/commercial", "side": "demand", "volume_mcm": 38.712}, {"component": "Storage injection", "side": "demand", "volume_mcm": 30.422}, {"component": "Power generation", "side": "demand", "volume_mcm": 17.718}, {"component": "Other entry sites", "side": "supply", "volume_mcm": 8.112}, {"component": "LNG", "side": "supply", "volume_mcm": 4.998}, {"component": "Storage withdrawal", "side": "supply", "volume_mcm": 3.52}, {"component": "Industrial (NTS-connected)", "side": "demand", "volume_mcm": 1.534}, {"component": "Shrinkage", "side": "demand", "volume_mcm": 0.286}], "2026-07-06": [{"component": "Other entry sites", "side": "supply", "volume_mcm": 140.25}, {"component": "Interconnector exports", "side": "demand", "volume_mcm": 62.932}, {"component": "Residential/commercial", "side": "demand", "volume_mcm": 39.537}, {"component": "Storage injection", "side": "demand", "volume_mcm": 20.297}, {"component": "Power generation", "side": "demand", "volume_mcm": 18.621}, {"component": "Storage withdrawal", "side": "supply", "volume_mcm": 3.268}, {"component": "Industrial (NTS-connected)", "side": "demand", "volume_mcm": 1.256}, {"component": "Shrinkage", "side": "demand", "volume_mcm": 0.256}, {"component": "UKCS production", "side": "supply", "volume_mcm": 0.0}, {"component": "Norway (Langeled)", "side": "supply", "volume_mcm": 0.0}], "2026-07-07": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.514}], "2026-07-08": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.48}], "2026-07-09": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.482}], "2026-07-10": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.456}], "2026-07-11": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.259}], "2026-07-12": [{"component": "Shrinkage", "side": "demand", "volume_mcm": 0.27}], "2026-07-13": [{"component": "UKCS production", "side": "supply", "volume_mcm": 75.753}, {"component": "Interconnector exports", "side": "demand", "volume_mcm": 61.447}, {"component": "Norway (Langeled)", "side": "supply", "volume_mcm": 53.21}, {"component": "Residential/commercial", "side": "demand", "volume_mcm": 40.875}, {"component": "Power generation", "side": "demand", "volume_mcm": 26.215}, {"component": "Storage injection", "side": "demand", "volume_mcm": 13.805}, {"component": "Storage withdrawal", "side": "supply", "volume_mcm": 7.223}, {"component": "Other entry sites", "side": "supply", "volume_mcm": 4.821}, {"component": "Industrial (NTS-connected)", "side": "demand", "volume_mcm": 2.494}, {"component": "Shrinkage", "side": "demand", "volume_mcm": 0.713}, {"component": "LNG", "side": "supply", "volume_mcm": 0.0}], "2026-07-14": [{"component": "UKCS production", "side": "supply", "volume_mcm": 71.663}, {"component": "Interconnector exports", "side": "demand", "volume_mcm": 61.235}, {"component": "Norway (Langeled)", "side": "supply", "volume_mcm": 58.67}, {"component": "Residential/commercial", "side": "demand", "volume_mcm": 41.792}, {"component": "Power generation", "side": "demand", "volume_mcm": 31.091}, {"component": "Storage withdrawal", "side": "supply", "volume_mcm": 7.171}, {"component": "Other entry sites", "side": "supply", "volume_mcm": 4.803}, {"component": "Storage injection", "side": "demand", "volume_mcm": 2.865}, {"component": "Industrial (NTS-connected)", "side": "demand", "volume_mcm": 2.719}, {"component": "Shrinkage", "side": "demand", "volume_mcm": 0.663}, {"component": "LNG", "side": "supply", "volume_mcm": 0.0}], "2026-07-15": [{"component": "Other entry sites", "side": "supply", "volume_mcm": 144.716}, {"component": "Interconnector exports", "side": "demand", "volume_mcm": 65.09}, {"component": "Residential/commercial", "side": "demand", "volume_mcm": 44.145}, {"component": "Power generation", "side": "demand", "volume_mcm": 41.867}, {"component": "Storage withdrawal", "side": "supply", "volume_mcm": 3.067}, {"component": "Industrial (NTS-connected)", "side": "demand", "volume_mcm": 2.723}, {"component": "Storage injection", "side": "demand", "volume_mcm": 2.227}, {"component": "LNG", "side": "supply", "volume_mcm": 0.0}, {"component": "UKCS production", "side": "supply", "volume_mcm": 0.0}, {"component": "Norway (Langeled)", "side": "supply", "volume_mcm": 0.0}]}, "drilldown": {"2026-07-05": {"UKCS production": [{"label": "St Fergus - Shell", "volume_mcm": 24.824}, {"label": "St Fergus - NSMP", "volume_mcm": 16.7118}, {"label": "Teesside - CATS", "volume_mcm": 14.5269}, {"label": "Bacton - Perenco", "volume_mcm": 8.0253}, {"label": "St Fergus - Mobil", "volume_mcm": 7.862}, {"label": "Bacton - Shell", "volume_mcm": 4.64}, {"label": "Easington - Dimlington", "volume_mcm": 2.144}, {"label": "Teesside - PX", "volume_mcm": 1.2132}], "Other entry sites": [{"label": "Bacton Seal", "volume_mcm": 4.67}, {"label": "Saltfleetby", "volume_mcm": 0.1767}, {"label": "Murrow", "volume_mcm": 0.0208}, {"label": "Glentham Biomethane", "volume_mcm": 0.0182}], "LNG": [{"label": "South Hook", "volume_mcm": 4.998}], "Storage withdrawal": [{"label": "Isle of Grain (LNG)", "volume_mcm": 3.52}], "Storage injection": [{"label": "INF_Stublach", "volume_mcm": 16.5797}, {"label": "INF_Aldbrough", "volume_mcm": 10.3103}, {"label": "INF_HillTop", "volume_mcm": 8.1046}, {"label": "INF_Holford", "volume_mcm": 3.7556}], "Interconnector exports": [{"label": "IUK", "volume_mcm": 34.6871}, {"label": "BBL", "volume_mcm": 16.3273}, {"label": "Moffat", "volume_mcm": 12.149}], "Power generation": [{"label": "Blackbridge", "volume_mcm": 3.0914}, {"label": "Seabank", "volume_mcm": 2.7432}, {"label": "Grain", "volume_mcm": 2.5346}, {"label": "Marchwood", "volume_mcm": 2.2607}, {"label": "Keadby2", "volume_mcm": 1.8009}, {"label": "Carrington", "volume_mcm": 1.3849}, {"label": "Cottam", "volume_mcm": 0.7094}, {"label": "Coryton", "volume_mcm": 0.6423}, {"label": "Westburtonps", "volume_mcm": 0.5795}, {"label": "Ltbarford", "volume_mcm": 0.5585}, {"label": "Staythorpe", "volume_mcm": 0.5197}, {"label": "Burtonpoint", "volume_mcm": 0.3419}, {"label": "Palmpaper", "volume_mcm": 0.2209}, {"label": "Sellafield", "volume_mcm": 0.0631}, {"label": "Saltend", "volume_mcm": 0.0392}, {"label": "Thorntoncurt", "volume_mcm": 0.0341}, {"label": "Spalding", "volume_mcm": 0.0108}, {"label": "Ryehouse", "volume_mcm": 0.0049}, {"label": "Stallingbor2", "volume_mcm": 0.0}, {"label": "Keadby", "volume_mcm": 0.0}, {"label": "Medway", "volume_mcm": 0.0}], "Residential/commercial": [{"label": "NDM SC", "volume_mcm": 3.1406}, {"label": "NDM NT", "volume_mcm": 3.1098}, {"label": "NDM NW", "volume_mcm": 3.0477}, {"label": "NDM SE", "volume_mcm": 2.7445}, {"label": "NDM EM", "volume_mcm": 2.7131}, {"label": "NDM EA", "volume_mcm": 2.2589}, {"label": "NDM WM", "volume_mcm": 2.1422}, {"label": "DM NW", "volume_mcm": 1.9748}, {"label": "NDM SO", "volume_mcm": 1.9092}, {"label": "NDM SW", "volume_mcm": 1.6885}, {"label": "DM EM", "volume_mcm": 1.6262}, {"label": "NDM NE", "volume_mcm": 1.561}, {"label": "DM SO", "volume_mcm": 1.5521}, {"label": "NDM NO", "volume_mcm": 1.4406}, {"label": "DM SC", "volume_mcm": 1.3794}, {"label": "DM NE", "volume_mcm": 1.2983}, {"label": "DM SE", "volume_mcm": 1.2437}, {"label": "NDM WS", "volume_mcm": 1.0796}, {"label": "DM EA", "volume_mcm": 1.0639}, {"label": "DM WS", "volume_mcm": 0.9095}, {"label": "DM WM", "volume_mcm": 0.714}, {"label": "DM NO", "volume_mcm": 0.5588}, {"label": "DM SW", "volume_mcm": 0.4943}, {"label": "NDM WN", "volume_mcm": 0.3343}, {"label": "DM WN", "volume_mcm": 0.2266}, {"label": "DM NT", "volume_mcm": 0.2158}]}, "2026-07-13": {"UKCS production": [{"label": "St Fergus - Shell", "volume_mcm": 21.575}, {"label": "St Fergus - NSMP", "volume_mcm": 16.284}, {"label": "St Fergus - Mobil", "volume_mcm": 8.5971}, {"label": "Bacton - Perenco", "volume_mcm": 7.797}, {"label": "Teesside - CATS", "volume_mcm": 6.9929}, {"label": "Teesside - PX", "volume_mcm": 5.569}, {"label": "Bacton - Shell", "volume_mcm": 4.7}, {"label": "Easington - Dimlington", "volume_mcm": 4.2379}], "Other entry sites": [{"label": "Bacton Seal", "volume_mcm": 4.61}, {"label": "Saltfleetby", "volume_mcm": 0.1736}, {"label": "Murrow", "volume_mcm": 0.0211}, {"label": "Glentham Biomethane", "volume_mcm": 0.0165}], "LNG": [{"label": "South Hook", "volume_mcm": 4.9931}, {"label": "Grain NTS2", "volume_mcm": 3.8862}], "Storage withdrawal": [{"label": "Isle of Grain (LNG)", "volume_mcm": 7.2229}], "Storage injection": [{"label": "INF_Stublach", "volume_mcm": 11.9207}, {"label": "INF_Aldbrough", "volume_mcm": 3.5263}, {"label": "INF_Holford", "volume_mcm": 3.3207}, {"label": "INF_HillTop", "volume_mcm": 3.3072}], "Interconnector exports": [{"label": "IUK", "volume_mcm": 34.5051}, {"label": "BBL", "volume_mcm": 15.6179}, {"label": "Moffat", "volume_mcm": 11.324}], "Power generation": [{"label": "Blackbridge", "volume_mcm": 4.5868}, {"label": "Grain", "volume_mcm": 2.7656}, {"label": "Seabank", "volume_mcm": 2.6152}, {"label": "Keadby2", "volume_mcm": 2.4724}, {"label": "Westburtonps", "volume_mcm": 2.2949}, {"label": "Staythorpe", "volume_mcm": 1.8966}, {"label": "Spalding", "volume_mcm": 1.6617}, {"label": "Cottam", "volume_mcm": 1.5317}, {"label": "Burtonpoint", "volume_mcm": 1.1452}, {"label": "Saltend", "volume_mcm": 0.8562}, {"label": "Marchwood", "volume_mcm": 0.8554}, {"label": "Coryton", "volume_mcm": 0.8143}, {"label": "Carrington", "volume_mcm": 0.7447}, {"label": "Ltbarford", "volume_mcm": 0.6652}, {"label": "Ryehouse", "volume_mcm": 0.4455}, {"label": "Palmpaper", "volume_mcm": 0.2293}, {"label": "Sellafield", "volume_mcm": 0.069}, {"label": "Thorntoncurt", "volume_mcm": 0.0626}, {"label": "Brigg", "volume_mcm": 0.0502}, {"label": "Teesside Nsmp", "volume_mcm": 0.0061}, {"label": "Thurrock", "volume_mcm": 0.0037}, {"label": "Keadby", "volume_mcm": 0.0001}, {"label": "Stallingbor2", "volume_mcm": 0.0}, {"label": "Medway", "volume_mcm": 0.0}], "Residential/commercial": [{"label": "NDM NW", "volume_mcm": 3.7015}, {"label": "NDM NT", "volume_mcm": 3.4056}, {"label": "NDM EM", "volume_mcm": 3.3675}, {"label": "NDM SE", "volume_mcm": 2.9491}, {"label": "NDM WM", "volume_mcm": 2.6029}, {"label": "NDM EA", "volume_mcm": 2.5179}, {"label": "NDM SC", "volume_mcm": 2.4064}, {"label": "DM NW", "volume_mcm": 2.1244}, {"label": "NDM SO", "volume_mcm": 2.0979}, {"label": "NDM SW", "volume_mcm": 1.9268}, {"label": "NDM NE", "volume_mcm": 1.8709}, {"label": "DM SE", "volume_mcm": 1.733}, {"label": "DM EM", "volume_mcm": 1.6711}, {"label": "DM SO", "volume_mcm": 1.595}, {"label": "NDM NO", "volume_mcm": 1.5581}, {"label": "DM NE", "volume_mcm": 1.3986}, {"label": "DM SC", "volume_mcm": 1.337}, {"label": "NDM WS", "volume_mcm": 1.0478}, {"label": "DM EA", "volume_mcm": 1.0024}, {"label": "DM WS", "volume_mcm": 0.877}, {"label": "DM WM", "volume_mcm": 0.8617}, {"label": "DM NO", "volume_mcm": 0.7593}, {"label": "DM SW", "volume_mcm": 0.4562}, {"label": "NDM WN", "volume_mcm": 0.4135}, {"label": "DM NT", "volume_mcm": 0.3577}, {"label": "DM WN", "volume_mcm": 0.2747}]}, "2026-07-14": {"UKCS production": [{"label": "St Fergus - Shell", "volume_mcm": 22.245}, {"label": "St Fergus - NSMP", "volume_mcm": 15.7521}, {"label": "Bacton - Perenco", "volume_mcm": 7.2667}, {"label": "St Fergus - Mobil", "volume_mcm": 7.0435}, {"label": "Teesside - PX", "volume_mcm": 6.3371}, {"label": "Bacton - Shell", "volume_mcm": 4.47}, {"label": "Teesside - CATS", "volume_mcm": 4.3826}, {"label": "Easington - Dimlington", "volume_mcm": 4.1664}], "Other entry sites": [{"label": "Bacton Seal", "volume_mcm": 4.62}, {"label": "Saltfleetby", "volume_mcm": 0.1472}, {"label": "Murrow", "volume_mcm": 0.0206}, {"label": "Glentham Biomethane", "volume_mcm": 0.0152}], "LNG": [{"label": "South Hook", "volume_mcm": 4.996}], "Storage withdrawal": [{"label": "Isle of Grain (LNG)", "volume_mcm": 7.171}], "Storage injection": [{"label": "INF_Stublach", "volume_mcm": 6.2492}, {"label": "INF_Aldbrough", "volume_mcm": 3.6672}, {"label": "INF_Holford", "volume_mcm": 2.1801}, {"label": "INF_HillTop", "volume_mcm": 1.5803}], "Interconnector exports": [{"label": "IUK", "volume_mcm": 33.5085}, {"label": "BBL", "volume_mcm": 16.1706}, {"label": "Moffat", "volume_mcm": 11.5561}], "Power generation": [{"label": "Blackbridge", "volume_mcm": 4.5221}, {"label": "Peterhead", "volume_mcm": 3.0556}, {"label": "Grain", "volume_mcm": 2.792}, {"label": "Seabank", "volume_mcm": 2.6101}, {"label": "Staythorpe", "volume_mcm": 2.269}, {"label": "Westburtonps", "volume_mcm": 1.9604}, {"label": "Keadby2", "volume_mcm": 1.9217}, {"label": "Saltend", "volume_mcm": 1.8718}, {"label": "Spalding", "volume_mcm": 1.6465}, {"label": "Burtonpoint", "volume_mcm": 1.5955}, {"label": "Cottam", "volume_mcm": 1.5387}, {"label": "Carrington", "volume_mcm": 1.3122}, {"label": "Ltbarford", "volume_mcm": 1.2653}, {"label": "Coryton", "volume_mcm": 1.1991}, {"label": "Marchwood", "volume_mcm": 0.634}, {"label": "Palmpaper", "volume_mcm": 0.2316}, {"label": "Brigg", "volume_mcm": 0.082}, {"label": "Sellafield", "volume_mcm": 0.0713}, {"label": "Peterboro", "volume_mcm": 0.025}, {"label": "Thorntoncurt", "volume_mcm": 0.0245}, {"label": "Ryehouse", "volume_mcm": 0.0054}, {"label": "Thurrock", "volume_mcm": 0.0033}, {"label": "Keadby", "volume_mcm": 0.0009}, {"label": "Rocksavage", "volume_mcm": 0.0005}, {"label": "Stallingbor2", "volume_mcm": 0.0}, {"label": "Medway", "volume_mcm": 0.0}], "Residential/commercial": [{"label": "NDM NW", "volume_mcm": 3.7018}, {"label": "NDM NT", "volume_mcm": 3.4057}, {"label": "NDM EM", "volume_mcm": 3.3675}, {"label": "NDM SE", "volume_mcm": 2.949}, {"label": "NDM WM", "volume_mcm": 2.6031}, {"label": "NDM SC", "volume_mcm": 2.5656}, {"label": "NDM EA", "volume_mcm": 2.5179}, {"label": "DM NW", "volume_mcm": 2.2099}, {"label": "DM SE", "volume_mcm": 2.1492}, {"label": "NDM SO", "volume_mcm": 2.0979}, {"label": "DM EM", "volume_mcm": 1.9296}, {"label": "NDM SW", "volume_mcm": 1.9269}, {"label": "NDM NE", "volume_mcm": 1.8709}, {"label": "NDM NO", "volume_mcm": 1.6141}, {"label": "DM SO", "volume_mcm": 1.5122}, {"label": "DM NE", "volume_mcm": 1.4576}, {"label": "DM SC", "volume_mcm": 1.3507}, {"label": "DM WS", "volume_mcm": 1.2372}, {"label": "NDM WS", "volume_mcm": 1.0478}, {"label": "DM EA", "volume_mcm": 0.9933}, {"label": "DM WM", "volume_mcm": 0.9314}, {"label": "DM NO", "volume_mcm": 0.7827}, {"label": "DM SW", "volume_mcm": 0.5185}, {"label": "NDM WN", "volume_mcm": 0.4135}, {"label": "DM NT", "volume_mcm": 0.3559}, {"label": "DM WN", "volume_mcm": 0.262}]}, "2026-07-06": {"Storage withdrawal": [{"label": "Isle of Grain (LNG)", "volume_mcm": 3.2679}], "Storage injection": [{"label": "INF_Stublach", "volume_mcm": 15.3605}, {"label": "INF_Aldbrough", "volume_mcm": 8.5779}, {"label": "INF_HillTop", "volume_mcm": 5.5819}, {"label": "INF_Holford", "volume_mcm": 0.8673}], "Interconnector exports": [{"label": "IUK", "volume_mcm": 34.7111}, {"label": "BBL", "volume_mcm": 15.4723}, {"label": "Moffat", "volume_mcm": 12.749}], "Power generation": [{"label": "Seabank", "volume_mcm": 3.8243}, {"label": "Blackbridge", "volume_mcm": 2.4502}, {"label": "Grain", "volume_mcm": 2.3651}, {"label": "Marchwood", "volume_mcm": 2.1812}, {"label": "Carrington", "volume_mcm": 1.6239}, {"label": "Coryton", "volume_mcm": 1.3162}, {"label": "Staythorpe", "volume_mcm": 1.1808}, {"label": "Westburtonps", "volume_mcm": 1.132}, {"label": "Cottam", "volume_mcm": 0.7177}, {"label": "Ltbarford", "volume_mcm": 0.4918}, {"label": "Burtonpoint", "volume_mcm": 0.4667}, {"label": "Keadby2", "volume_mcm": 0.2988}, {"label": "Palmpaper", "volume_mcm": 0.1845}, {"label": "Sellafield", "volume_mcm": 0.0636}, {"label": "Brigg", "volume_mcm": 0.0361}, {"label": "Thorntoncurt", "volume_mcm": 0.0352}, {"label": "Peterboro", "volume_mcm": 0.0135}, {"label": "Saltend", "volume_mcm": 0.01}, {"label": "Spalding", "volume_mcm": 0.009}, {"label": "Ryehouse", "volume_mcm": 0.0051}, {"label": "Thurrock", "volume_mcm": 0.0032}, {"label": "Medway", "volume_mcm": 0.0}]}, "2026-07-15": {"Storage withdrawal": [{"label": "Isle of Grain (LNG)", "volume_mcm": 3.0672}], "Storage injection": [{"label": "INF_Stublach", "volume_mcm": 1.7651}, {"label": "INF_Aldbrough", "volume_mcm": 1.0586}], "Interconnector exports": [{"label": "IUK", "volume_mcm": 34.9467}, {"label": "BBL", "volume_mcm": 16.2278}, {"label": "Moffat", "volume_mcm": 13.915}], "Power generation": [{"label": "Blackbridge", "volume_mcm": 5.1882}, {"label": "Peterhead", "volume_mcm": 4.863}, {"label": "Grain", "volume_mcm": 3.7592}, {"label": "Keadby2", "volume_mcm": 2.8655}, {"label": "Saltend", "volume_mcm": 2.7778}, {"label": "Seabank", "volume_mcm": 2.6392}, {"label": "Staythorpe", "volume_mcm": 2.3278}, {"label": "Spalding", "volume_mcm": 2.2366}, {"label": "Westburtonps", "volume_mcm": 2.2113}, {"label": "Ltbarford", "volume_mcm": 2.071}, {"label": "Carrington", "volume_mcm": 1.9056}, {"label": "Burtonpoint", "volume_mcm": 1.7827}, {"label": "Coryton", "volume_mcm": 1.6993}, {"label": "Cottam", "volume_mcm": 1.4545}, {"label": "Rocksavage", "volume_mcm": 1.1138}, {"label": "Keadby", "volume_mcm": 0.9834}, {"label": "Marchwood", "volume_mcm": 0.504}, {"label": "Ryehouse", "volume_mcm": 0.4438}, {"label": "Palmpaper", "volume_mcm": 0.2132}, {"label": "Brigg", "volume_mcm": 0.1009}, {"label": "Sellafield", "volume_mcm": 0.0691}, {"label": "Thorntoncurt", "volume_mcm": 0.0323}, {"label": "Peterboro", "volume_mcm": 0.0264}, {"label": "Thurrock", "volume_mcm": 0.0056}, {"label": "Stallingbor2", "volume_mcm": 0.0}, {"label": "Teesside Nsmp", "volume_mcm": 0.0}, {"label": "Medway", "volume_mcm": 0.0}]}}, "trend": {"labels": ["2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-14", "2026-07-15"], "balance": [-0.67, -0.77, -0.3, 2.67, 0.62, -0.51, -0.48, -0.48, -0.46, -0.26, -0.27, -4.54, 1.94, -8.27], "complete": [false, false, false, true, false, false, false, false, false, false, false, true, true, false]}, "colors": {"UKCS production": "#2563eb", "Norway (Langeled)": "#0ea5e9", "Other entry sites": "#38bdf8", "LNG": "#06b6d4", "Storage withdrawal": "#14b8a6", "Residential/commercial": "#f97316", "Industrial (NTS-connected)": "#f59e0b", "Power generation": "#ef4444", "Storage injection": "#a855f7", "Interconnector exports": "#ec4899", "Shrinkage": "#78716c"}};
+let bucketChart = null;
+
+function fmt(n) { return n.toLocaleString(undefined, {maximumFractionDigits: 1}); }
+
+function renderDay(day) {
+  const bal = DATA.balance[day];
+  const breakdown = DATA.breakdown[day];
+  const drilldown = DATA.drilldown[day] || {};
+
+  document.getElementById('subHeader').textContent =
+    `Gas day ${day} (06:00–06:00 Europe/London) · generated from nbp-gas-etl`;
+
+  let banner = '';
+  if (!bal.complete) {
+    banner = `<div class="banner">This gas day (${day}) is not fully published yet — some D+1/D+2 components are still missing. Figures below are best-available, not final.</div>`;
+  } else if (bal.days_behind > 0) {
+    const plural = bal.days_behind !== 1 ? 's' : '';
+    banner = `<div class="banner">${bal.days_behind} day${plural} behind the most recent pulled gas_day (${DATA.latestGasDay}) — more recent days exist but some components haven't published yet.</div>`;
   }
+  document.getElementById('banner').innerHTML = banner;
+
+  document.getElementById('cardSupply').textContent = fmt(bal.total_supply_mcm) + ' mcm';
+  document.getElementById('cardDemand').textContent = fmt(bal.total_demand_mcm) + ' mcm';
+  const statusColor = {surplus: '#16a34a', deficit: '#dc2626', balanced: '#64748b'}[bal.status];
+  const balEl = document.getElementById('cardBalance');
+  balEl.textContent = (bal.balance_mcm >= 0 ? '+' : '') + fmt(bal.balance_mcm) + ' mcm · ' + bal.status;
+  balEl.style.color = statusColor;
+
+  const supply = breakdown.filter(r => r.side === 'supply');
+  const demand = breakdown.filter(r => r.side === 'demand');
+  const ordered = supply.concat(demand);
+
+  const datasets = ordered.map(r => ({
+    label: r.component,
+    data: [r.side === 'supply' ? r.volume_mcm : 0, r.side === 'demand' ? r.volume_mcm : 0],
+    backgroundColor: DATA.colors[r.component] || '#94a3b8',
+  }));
+
+  if (bucketChart) bucketChart.destroy();
+  bucketChart = new Chart(document.getElementById('bucketChart'), {
+    type: 'bar',
+    data: { labels: ['Supply', 'Demand'], datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { color: '#e2e8f0', boxWidth: 12 } }, title: { display: true, text: 'Bucketed by component', color: '#e2e8f0' } },
+      scales: {
+        x: { stacked: true, ticks: { color: '#e2e8f0' }, grid: { color: '#334155' } },
+        y: { stacked: true, ticks: { color: '#e2e8f0' }, grid: { color: '#334155' }, title: { display: true, text: 'mcm', color: '#94a3b8' } }
+      }
+    }
+  });
+
+  const rowsHtml = ordered.map(r => {
+    const items = drilldown[r.component];
+    const swatch = `<span class="swatch" style="background:${DATA.colors[r.component] || '#94a3b8'}"></span>`;
+    if (!items || !items.length) {
+      return `<details><summary>${swatch}<span>${r.component} <span style="color:#94a3b8">(${r.side})</span></span><span>${fmt(r.volume_mcm)} mcm</span></summary><div class="no-detail">No per-site breakdown available for this bucket.</div></details>`;
+    }
+    const detailRows = items.map(it => `<div><span>${it.label}</span><span>${fmt(it.volume_mcm)} mcm</span></div>`).join('');
+    return `<details><summary>${swatch}<span>${r.component} <span style="color:#94a3b8">(${r.side})</span> <span class="arrow">▾</span></span><span>${fmt(r.volume_mcm)} mcm</span></summary><div class="detail-list">${detailRows}</div></details>`;
+  }).join('');
+  document.getElementById('detailTable').innerHTML = rowsHtml;
+}
+
+const daySelect = document.getElementById('daySelect');
+DATA.days.forEach(d => {
+  const opt = document.createElement('option');
+  opt.value = d;
+  opt.textContent = d + (DATA.balance[d].complete ? '' : ' (partial)');
+  daySelect.appendChild(opt);
 });
+daySelect.value = DATA.defaultDay;
+daySelect.addEventListener('change', () => renderDay(daySelect.value));
+renderDay(DATA.defaultDay);
 
 new Chart(document.getElementById('trendChart'), {
   type: 'bar',
   data: {
-    labels: ["2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-14", "2026-07-15"],
+    labels: DATA.trend.labels,
     datasets: [{
       label: 'Balance (mcm)',
-      data: [-0.67, -0.77, -0.3, 2.67, 0.62, -0.51, -0.48, -0.48, -0.46, -0.26, -0.27, -4.54, 1.94, -8.27],
-      backgroundColor: [false, false, false, true, false, false, false, false, false, false, false, true, true, false].map(c => c ? '#16a34a' : '#475569'),
+      data: DATA.trend.balance,
+      backgroundColor: DATA.trend.complete.map(c => c ? '#16a34a' : '#475569'),
     }]
   },
   options: {
     responsive: true,
-    plugins: { legend: { display: false }, title: { display: true, text: 'Balance trend (dim = incomplete day)', color: '#e2e8f0' } },
+    onClick: (evt, elements) => { if (elements.length) daySelect.value = DATA.trend.labels[elements[0].index], renderDay(daySelect.value); },
+    plugins: { legend: { display: false }, title: { display: true, text: 'Balance trend (click a bar to view that day; dim = incomplete)', color: '#e2e8f0' } },
     scales: {
       x: { ticks: { color: '#e2e8f0' }, grid: { display: false } },
       y: { ticks: { color: '#e2e8f0' }, grid: { color: '#334155' } }
