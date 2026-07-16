@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import re
 import sys
 from datetime import date, timedelta
 
@@ -25,9 +26,27 @@ import pandas as pd
 import requests
 
 sys.path.insert(0, ".")
-from src.units import kwh_to_mcm  # noqa: E402
+from src.units import kwh_to_mcm, gwh_to_mcm  # noqa: E402
 from src.schema import TABLES  # noqa: E402
 from src.csv_store import write_rows, table_path  # noqa: E402
+
+
+def normalize_unit(unit: str) -> str:
+    """Collapse unit-string variants (case, whitespace, punctuation) so
+    "kWh", "kw/h", "Kwh", " kWh" all compare equal. National Gas's own
+    catalogue is inconsistent about this across ~13,000 items."""
+    return re.sub(r"[^a-z0-9]", "", str(unit or "").lower())
+
+
+def value_to_mcm(value_raw: pd.Series, unit: str) -> pd.Series | None:
+    u = normalize_unit(unit)
+    if u in ("kwh", "kwhd"):
+        return kwh_to_mcm(value_raw)
+    if u in ("mcm", "mcmd", "mscm", "mscmd"):
+        return value_raw
+    if u in ("gwh", "gwhd", "gwhday"):
+        return gwh_to_mcm(value_raw)
+    return None
 
 ELEXON_URL = "https://data.elexon.co.uk/bmrs/api/v1/datasets/FUELHH"
 NATGAS_URL = "https://data.nationalgas.com/api/find-gas-data-download"
@@ -102,12 +121,7 @@ def fetch_national_gas_item(pubob_id: str, unit: str, days: int) -> pd.DataFrame
     df["pubob_id"] = pubob_id
     df["unit_raw"] = unit
 
-    if unit == "kWh":
-        df["value_mcm"] = kwh_to_mcm(df["value_raw"])
-    elif unit in ("mcm/d", "mcm"):
-        df["value_mcm"] = df["value_raw"]
-    else:
-        df["value_mcm"] = None
+    df["value_mcm"] = value_to_mcm(df["value_raw"], unit)
 
     bounds = df["gas_day"].apply(gas_day_bounds)
     df["gas_day_start_utc"] = bounds.apply(lambda b: b[0])
@@ -140,7 +154,7 @@ def main():
     dim = pd.read_csv(dim_path)
     active_items = dim[dim["relevant"] == True]  # noqa: E712
     active_items = active_items[active_items["category"].isin([
-        "Demand", "Supplies", "Storage", "Linepack", "Price",
+        "Demand", "Supplies", "Storage", "Linepack", "Price", "LNG",
     ])] if "category" in active_items.columns else active_items
 
     print(f"=== Elexon (last {args.days} days, all fuel types) ===")
