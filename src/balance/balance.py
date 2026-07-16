@@ -15,7 +15,14 @@ import argparse
 import pandas as pd
 
 from src.csv_store import table_path
-from src.balance.components import COMPONENTS, LNG_ENTRY_IDS
+from src.balance.components import COMPONENTS, LNG_ENTRY_IDS, SUBTERMINAL_ENTRY_IDS
+
+# Aggregate-item components that fall back to a per-site sum on days the
+# aggregate has no row — see components.py docstring for why each needs one.
+_AGGREGATE_FALLBACKS = {
+    "LNG": LNG_ENTRY_IDS,
+    "Subterminal entry (UKCS + Norway)": SUBTERMINAL_ENTRY_IDS,
+}
 
 SURPLUS_THRESHOLD_MCM = 2.0
 DEFICIT_THRESHOLD_MCM = -2.0
@@ -62,19 +69,21 @@ def component_breakdown(data_dir: str = "data/csv_tables") -> pd.DataFrame:
     for component in COMPONENTS:
         series = _component_series(latest, component)
 
-        # LNG aggregate fallback: PUBOBJ337 doesn't publish for every gas_day
-        # (some days it just has no row at all). Fill only the missing days
-        # from the per-terminal entry sum — combine_first keeps a real 0.0
-        # from the aggregate as-is, and only fills gas_days absent from it.
-        # Must be done per-day, not by checking if PUBOBJ337 is empty across
-        # the whole table: once it has a row for *any* day, a table-wide
-        # empty-check stops falling back and silently drops LNG supply on
-        # every day PUBOBJ337 itself has no row for.
-        if component.name == "LNG":
-            entry_series = _component_series(
-                latest, type(component)("LNG", "supply", LNG_ENTRY_IDS, mode="sum")
+        # Aggregate-item fallback: some aggregate items (e.g. PUBOBJ337 for
+        # LNG, PUBOBJ627 for subterminal entry) don't publish for every
+        # gas_day. Fill only the missing days from the per-site sum —
+        # combine_first keeps a real 0.0 from the aggregate as-is, and only
+        # fills gas_days absent from it. Must be done per-day, not by
+        # checking if the aggregate is empty across the whole table: once it
+        # has a row for *any* day, a table-wide empty-check stops falling
+        # back and silently drops supply on every day it itself has no row
+        # for (this exact bug was found and fixed for LNG — see git history).
+        fallback_ids = _AGGREGATE_FALLBACKS.get(component.name)
+        if fallback_ids:
+            fallback_series = _component_series(
+                latest, type(component)(component.name, component.side, fallback_ids, mode="sum")
             )
-            series = series.combine_first(entry_series)
+            series = series.combine_first(fallback_series)
 
         if series.empty:
             continue
